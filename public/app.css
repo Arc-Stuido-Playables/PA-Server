@@ -315,6 +315,7 @@ code {
 .dz-picked .tag { display: inline-block; margin-left: .5rem; padding: .05rem .5rem; border-radius: 1rem; font-size: .75rem; }
 .tag-new { background: hsl(var(--primary) / .15); color: hsl(var(--primary)); }
 .tag-update { background: hsl(var(--accent) / .15); color: hsl(var(--accent)); }
+.tag-error { background: hsl(var(--destructive) / .15); color: hsl(var(--destructive)); }
 
 .upload-actions { display: flex; align-items: center; justify-content: flex-end; gap: 1rem; margin-top: 1rem; }
 .progress { flex: 1; height: .375rem; border-radius: 1rem; background: hsl(var(--muted)); overflow: hidden; }

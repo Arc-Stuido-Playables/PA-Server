@@ -214,9 +214,23 @@ describe('HTTP server', () => {
     assert.equal(decoded, playable);
   });
 
-  test('US4: non-HTML files are served as-is', async () => {
+  test('US4: only .html/.htm uploads are accepted', async () => {
+    for (const name of ['build.zip', 'script.js', 'image.png', 'noext', 'page.html.zip']) {
+      const res = await upload(srv.base, name, 'x');
+      assert.equal(res.status, 415, name);
+      assert.equal(await res.text(), 'Можно загружать только .html файлы');
+    }
+    assert.deepEqual(
+      (await readdir(path.join(srv.dataDir, 'files'))).filter((n) => !/\.html?$/i.test(n)),
+      [],
+    );
+    assert.equal((await upload(srv.base, 'UPPER.HTML', 'x')).status, 303);
+    assert.equal((await upload(srv.base, 'old.htm', 'x')).status, 303);
+  });
+
+  test('US4: non-HTML files already on disk are still served as-is', async () => {
     const bytes = Buffer.from([0x50, 0x4b, 0x03, 0x04, 0, 1, 2, 255]);
-    await upload(srv.base, '07_BG_CM_plb_2pack_google.zip', bytes);
+    await writeFile(path.join(srv.dataDir, 'files', '07_BG_CM_plb_2pack_google.zip'), bytes);
     const res = await fetch(`${srv.base}${fileLink('07_BG_CM_plb_2pack_google.zip')}`);
     assert.equal(res.status, 200);
     assert.equal(res.headers.get('content-type'), 'application/zip');

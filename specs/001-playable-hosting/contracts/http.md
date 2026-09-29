@@ -7,6 +7,7 @@
 | `POST /upload` (multipart, поле `file`) | `303 Location: /list?uploaded=<enc>` |
 | `POST /upload` без файла | `400` текст |
 | `POST /upload` с недопустимым именем | `400` текст |
+| `POST /upload` не `.html`/`.htm` | `415` «Можно загружать только .html файлы», ничего не сохраняется |
 | `POST /upload` больше `MAX_UPLOAD_MB` | `413` текст, существующий файл не изменён |
 | `GET/PUT/… /upload` | `405 text/plain` «Метод не поддерживается» |
 | `GET\|HEAD /files/<name>` для `.html/.htm` | `200 text/html; charset=utf-8` — viewer; `<title>` = имя; `<iframe class="screen" srcdoc="…">` с экранированным содержимым |

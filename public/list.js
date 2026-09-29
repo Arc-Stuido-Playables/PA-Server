@@ -82,20 +82,24 @@
     history.replaceState(null, '', '/list');
   }
 
-  // File picking and drag & drop
+  // File picking and drag & drop (server accepts .html/.htm only)
+  const isHtml = (name) => /\.html?$/i.test(name.trim());
+
   function showPicked() {
     const file = input.files[0];
     if (!file) {
       picked.hidden = true;
       return;
     }
+    const html = isHtml(file.name);
     const isUpdate = existing.has(file.name.normalize('NFC').trim());
     picked.textContent = file.name;
     const tag = document.createElement('span');
-    tag.className = `tag ${isUpdate ? 'tag-update' : 'tag-new'}`;
-    tag.textContent = isUpdate ? 'обновит существующий' : 'новый файл';
+    tag.className = `tag ${!html ? 'tag-error' : isUpdate ? 'tag-update' : 'tag-new'}`;
+    tag.textContent = !html ? 'только .html' : isUpdate ? 'обновит существующий' : 'новый файл';
     picked.append(tag);
     picked.hidden = false;
+    submit.disabled = !html;
   }
   input.addEventListener('change', showPicked);
 
@@ -117,6 +121,10 @@
   form.addEventListener('submit', (e) => {
     if (!input.files.length || !window.FormData) return;
     e.preventDefault();
+    if (!isHtml(input.files[0].name)) {
+      showToast('Можно загружать только .html файлы', true);
+      return;
+    }
     const xhr = new XMLHttpRequest();
     const bar = progress.firstElementChild;
     progress.hidden = false;

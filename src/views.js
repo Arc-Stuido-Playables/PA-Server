@@ -101,7 +101,7 @@ ${head('Плееблы — Arc Studio')}
     </div>
     <form enctype="multipart/form-data" action="/upload" method="post" id="upload-form">
       <label class="dropzone" id="dropzone">
-        <input type="file" name="file" id="file-input" required>
+        <input type="file" name="file" id="file-input" accept=".html,.htm,text/html" required>
         <span class="dz-icon">${ICONS.upload}</span>
         <span class="dz-title">Выбрать файл</span>
         <span class="dz-hint">или перетащите .html сюда</span>

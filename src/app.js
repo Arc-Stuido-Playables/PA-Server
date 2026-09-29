@@ -131,6 +131,11 @@ export async function createApp({ dataDir, maxUploadBytes, adminUser, adminPassw
         job = Promise.resolve({ status: 400, text: 'Недопустимое имя файла' });
         return;
       }
+      if (!isHtml(name)) {
+        stream.resume();
+        job = Promise.resolve({ status: 415, text: 'Можно загружать только .html файлы' });
+        return;
+      }
       current = stream;
       job = storage.save(stream, name).then(
         () => ({ status: 303, name }),
