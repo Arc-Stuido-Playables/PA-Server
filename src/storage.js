@@ -66,7 +66,7 @@ export class Storage {
     return path.join(this.filesDir, name);
   }
 
-  /** All regular files, sorted by code point like the reference server. */
+  /** All regular files, newest (last uploaded) first; ties by name. */
   async list() {
     const entries = await readdir(this.filesDir, { withFileTypes: true });
     const files = await Promise.all(
@@ -77,7 +77,9 @@ export class Storage {
           return { name: e.name, size: s.size, mtime: s.mtime };
         }),
     );
-    return files.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    return files.sort(
+      (a, b) => b.mtime - a.mtime || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0),
+    );
   }
 
   /** Stat a stored file by (already validated) name; null if missing. */

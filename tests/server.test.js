@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, utimes, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
@@ -121,12 +121,36 @@ describe('HTTP server', () => {
     assert.equal((await fetch(`${srv.base}${fileLink(name)}`)).status, 200);
   });
 
-  test('US1: list is sorted by name', async () => {
-    await upload(srv.base, 'b.html', 'b');
-    await upload(srv.base, 'a.html', 'a');
+  test('US1: list is sorted newest first, re-upload moves a file to the top', async () => {
+    const dir = path.join(srv.dataDir, 'files');
+    const names = async () => {
+      const html = await (await fetch(`${srv.base}/list`)).text();
+      return [...html.matchAll(/class="file-name">([^<]+)</g)].map((m) => m[1]);
+    };
+    await upload(srv.base, 'old.html', 'o');
+    await upload(srv.base, 'mid.html', 'm');
+    await upload(srv.base, 'new.html', 'n');
+    const t = Date.now() / 1000 + 3600; // in the future: above files from other tests
+    await utimes(path.join(dir, 'old.html'), t, t);
+    await utimes(path.join(dir, 'mid.html'), t + 1, t + 1);
+    await utimes(path.join(dir, 'new.html'), t + 2, t + 2);
+    assert.deepEqual((await names()).slice(0, 3), ['new.html', 'mid.html', 'old.html']);
+
+    await upload(srv.base, 'old.html', 'o2');
+    await utimes(path.join(dir, 'old.html'), t + 3, t + 3);
+    assert.deepEqual((await names()).slice(0, 3), ['old.html', 'new.html', 'mid.html']);
+  });
+
+  test('US1: equal times fall back to name order', async () => {
+    const dir = path.join(srv.dataDir, 'files');
+    const t = Date.now() / 1000 + 7200;
+    for (const n of ['tie-b.html', 'tie-a.html', 'tie-c.html']) {
+      await upload(srv.base, n, 'x');
+      await utimes(path.join(dir, n), t, t);
+    }
     const html = await (await fetch(`${srv.base}/list`)).text();
     const names = [...html.matchAll(/class="file-name">([^<]+)</g)].map((m) => m[1]);
-    assert.deepEqual(names, [...names].sort());
+    assert.deepEqual(names.slice(0, 3), ['tie-a.html', 'tie-b.html', 'tie-c.html']);
   });
 
   test('US1: upload without a file is rejected', async () => {

@@ -63,6 +63,7 @@ description: "Task list for 001-playable-hosting"
 - [x] T022 [P] `docs/DEPLOY-TIMEWEB.md` + `deploy/nginx.conf` + `docker-compose.yml` — VPS (Docker + том + nginx/HTTPS) и App Platform
 - [x] T023 [P] `README.md` — гайд заливки для команды, запуск, конфигурация
 - [x] T024 Прогон quickstart.md в браузере (десктоп + 375px)
+- [x] T027 [US1] Сортировка списка от новых к старым (FR-001, изменено 2026-09-30), тесты
 - [x] T026 [US4] Только `.html`/`.htm` при загрузке: `415` в `src/app.js`, `accept` + проверка в `public/list.js`, тесты
 - [x] T025 [P] `deploy/install.sh` — установка/обновление одной командой на VPS без домена (systemd, порт 80); docs переписаны под этот путь
 
