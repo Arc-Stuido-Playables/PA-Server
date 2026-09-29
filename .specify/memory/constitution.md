@@ -1,6 +1,7 @@
 <!--
 Sync Impact Report
-- Version change: template → 1.0.0 (первичное принятие)
+- Version change: 1.0.0 → 1.0.1 (PATCH: уточнён способ развёртывания — VPS по IP через
+  install.sh вместо Docker как основного пути)
 - Principles: I. Паритет с референсом; II. Простота; III. Сохранность файлов;
   IV. Безопасность хранилища; V. Проверяемость
 - Added sections: Технические ограничения, Процесс разработки, Governance
@@ -64,8 +65,9 @@ Rationale: паритет с референсом легко сломать не
 - Runtime: Node.js ≥ 20 (LTS), модули ESM.
 - Конфигурация только через переменные окружения (`PORT`, `STORAGE_DIR`,
   `MAX_UPLOAD_MB`).
-- Развёртывание: Timeweb Cloud (VPS или App Platform) через `Dockerfile`; каталог
-  хранилища MUST монтироваться как постоянный том.
+- Развёртывание: самый младший облачный сервер Timeweb Cloud без домена — Node.js +
+  systemd через `deploy/install.sh`, доступ по IP на порту 80 (основной путь); `Dockerfile`
+  — альтернатива. Каталог хранилища MUST находиться на постоянном диске.
 - Дизайн интерфейса MUST следовать стилю Arc Studio (arc-studio.tech): тёмный фон,
   синий primary `hsl(217 98% 58%)`, моноширинные заголовки, Golos Text для текста.
 
@@ -83,4 +85,4 @@ Rationale: паритет с референсом легко сломать не
 Report. Каждый план (`plan.md`) MUST содержать проверку соответствия конституции
 (Constitution Check).
 
-**Version**: 1.0.0 | **Ratified**: 2026-09-29 | **Last Amended**: 2026-09-29
+**Version**: 1.0.1 | **Ratified**: 2026-09-29 | **Last Amended**: 2026-09-29

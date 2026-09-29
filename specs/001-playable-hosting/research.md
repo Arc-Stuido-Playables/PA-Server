@@ -37,8 +37,10 @@
 
 ## Деплой на Timeweb
 
-- **Decision**: `Dockerfile` (node:22-alpine), `DATA_DIR=/data` как том; инструкция для
-  VPS (Docker + volume + nginx/HTTPS) и для App Platform.
+- **Decision** (обновлено по запросу «максимально дёшево и просто, без домена»): младший
+  облачный сервер + `deploy/install.sh` — Node.js 22 из NodeSource, systemd-сервис от
+  отдельного пользователя, порт 80 по IP (`CAP_NET_BIND_SERVICE`), данные в
+  `/var/lib/pa-server`, повторный запуск = обновление. Docker/nginx/HTTPS — опционально.
 - **Rationale**: App Platform Timeweb собирает из Dockerfile, но диск приложения не
   переживает редеплой — для постоянного хранения рекомендуется VPS или подключённый
   том/хранилище. Инструкция фиксирует оба пути.

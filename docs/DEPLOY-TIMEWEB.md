@@ -1,115 +1,94 @@
-# Деплой PA-Server на Timeweb Cloud
+# Деплой PA-Server на Timeweb Cloud — самый дешёвый и простой способ
 
-Сервер хранит плееблы **файлами на диске** (`/data/files` внутри контейнера). Главное при
-деплое — чтобы эта папка **переживала перезапуски и обновления**. Поэтому рекомендуемый
-вариант — облачный сервер (VPS) с Docker и томом.
+Итог: один самый младший облачный сервер, без домена, без Docker и nginx.
+Плееблы открываются по IP: `http://<IP сервера>/list` — как на референсе.
 
----
+## 1. Купить сервер
 
-## Вариант A (рекомендуется): облачный сервер + Docker
+Панель Timeweb Cloud → **Облачные серверы** → **Создать**:
 
-### 1. Создать сервер
+| Параметр | Что выбрать |
+|----------|-------------|
+| ОС | **Ubuntu 24.04** (подойдёт и 22.04 / Debian 12) |
+| Конфигурация | **самая младшая**: 1 vCPU / 1 ГБ RAM / 15 ГБ диска — серверу хватает с большим запасом (сам он занимает ~60 МБ памяти) |
+| Регион | любой ближайший к клиентам |
+| Сеть | обязательно **публичный IPv4** — по нему клиенты будут открывать ссылки |
+| Доступ | root-пароль (придёт в панели / на почту) или SSH-ключ |
 
-Панель Timeweb Cloud → **Облачные серверы** → Создать:
+Бэкапы, базы, балансировщики и прочие опции — не нужны.
 
-- ОС: **Ubuntu 24.04**
-- Конфигурация: 1 vCPU / 1–2 ГБ RAM / 15+ ГБ NVMe — хватит с запасом
-  (600 плееблов по ~5 МБ ≈ 3 ГБ)
-- Можно сразу выбрать образ из маркетплейса **Docker** — тогда шаг 2 пропустить.
+Места на 15 ГБ: плеебл ~5 МБ → примерно 2500 плееблов. Если станет мало — диск
+увеличивается в панели.
 
-Запомнить IP сервера и root-пароль (придут на почту / в панели).
+## 2. Установить сервер — одна команда
 
-### 2. Установить Docker
-
-```bash
-ssh root@<IP>
-curl -fsSL https://get.docker.com | sh
-```
-
-### 3. Забрать код и запустить
+Подключиться к серверу (Windows: PowerShell или «Консоль» прямо в панели Timeweb):
 
 ```bash
-git clone https://github.com/Arc-Stuido-Playables/PA-Server.git /opt/pa-server
-cd /opt/pa-server
-docker compose up -d --build
-curl http://127.0.0.1:8080/healthz   # → ok
+ssh root@<IP сервера>
 ```
 
-По умолчанию контейнер слушает только `127.0.0.1:8080` — наружу его отдаёт nginx
-(шаг 4). **Если домен и HTTPS не нужны** (как на референсе — голый IP), в
-`docker-compose.yml` поменяйте порт на `"80:8080"`, выполните
-`docker compose up -d` — и сервер доступен по `http://<IP>/list`. Шаг 4 тогда пропустить.
-
-### 4. Домен + HTTPS (nginx)
-
-1. В DNS домена создайте A-запись, например `play.arc-studio.tech → <IP>`.
-2. На сервере:
+Выполнить:
 
 ```bash
-apt install -y nginx certbot python3-certbot-nginx
-cp /opt/pa-server/deploy/nginx.conf /etc/nginx/sites-available/pa-server
-sed -i 's/play.example.com/play.arc-studio.tech/' /etc/nginx/sites-available/pa-server
-ln -s /etc/nginx/sites-available/pa-server /etc/nginx/sites-enabled/
-nginx -t && systemctl reload nginx
-certbot --nginx -d play.arc-studio.tech
+curl -fsSL https://raw.githubusercontent.com/Arc-Stuido-Playables/PA-Server/main/deploy/install.sh | bash
 ```
 
-> ⚠️ `client_max_body_size` в nginx должен быть не меньше `MAX_UPLOAD_MB`, иначе большие
-> билды будут отбиваться ошибкой 413. В готовом конфиге стоит `100m`.
+Скрипт сам поставит Node.js, скачает код, заведёт автозапуск и в конце напишет:
 
-### 5. Обновление сервера
+```text
+Готово! Сервер плееблов: http://<IP>/list
+```
+
+Всё. Эту ссылку отдаёте команде, ссылки на плееблы будут вида
+`http://<IP>/files/04_G5_31пак_EH1234i001v001.html`.
+
+Сервер сам поднимается после перезагрузки VPS и перезапускается при сбое.
+
+## Обновление
+
+Когда в репозитории появятся изменения — та же самая команда:
 
 ```bash
-cd /opt/pa-server && git pull && docker compose up -d --build
+curl -fsSL https://raw.githubusercontent.com/Arc-Stuido-Playables/PA-Server/main/deploy/install.sh | bash
 ```
 
-Плееблы лежат в Docker-томе `pa-data` и при обновлении **не теряются**.
+Залитые плееблы при этом не трогаются.
 
-### Бэкап и перенос файлов
+## Настройки (необязательно)
+
+Файл `/etc/pa-server.env`, после правки — `systemctl restart pa-server`:
 
 ```bash
-# бэкап всех плееблов в архив
-docker run --rm -v pa-server_pa-data:/data -v "$PWD":/backup alpine \
-  tar czf /backup/playables-$(date +%F).tgz -C /data files
+# Пароль на список и загрузку (ссылки на плееблы для клиентов остаются открытыми)
+ADMIN_USER=arc
+ADMIN_PASSWORD=придумайте-пароль
 
-# залить пачку файлов со старого сервера / из папки
-docker cp ./old-playables/. pa-server:/data/files/
+# Лимит размера одного файла, МБ (по умолчанию 100)
+MAX_UPLOAD_MB=100
 ```
 
-Файлы, положенные в `/data/files` напрямую, сразу появляются в списке. Удаление —
-тоже вручную: `docker exec pa-server rm "/data/files/<имя>"`.
+## Полезные команды
 
----
+| Задача | Команда |
+|--------|---------|
+| Статус | `systemctl status pa-server` |
+| Логи (кто что залил) | `journalctl -u pa-server -n 100` |
+| Где файлы | `ls /var/lib/pa-server/files` |
+| Удалить плеебл | `rm "/var/lib/pa-server/files/<имя>"` |
+| Залить пачку файлов со своего ПК | `scp *.html root@<IP>:/var/lib/pa-server/files/` затем `chown -R pa-server: /var/lib/pa-server/files` |
+| Бэкап на свой ПК | `scp -r root@<IP>:/var/lib/pa-server/files ./backup` |
 
-## Вариант B: App Platform (Apps) из GitHub
+Файлы, положенные в `/var/lib/pa-server/files` напрямую, сразу видны в списке.
 
-Timeweb App Platform умеет собирать проект из `Dockerfile` в корне репозитория
-(порт берётся из `EXPOSE 8080`).
+## Если потом понадобится
 
-1. Панель → **App Platform** → Создать → Dockerfile → подключить GitHub-репозиторий
-   `Arc-Stuido-Playables/PA-Server`, ветка `main`.
-2. Переменные окружения — по таблице ниже. Health check path: `/healthz`.
-
-> ⚠️ **Риск потери файлов.** Файловая система контейнера в App Platform, как и на
-> аналогичных PaaS, обычно не сохраняется между деплоями и перезапусками — залитые
-> плееблы могут пропасть при каждом обновлении. Перед использованием уточните в поддержке
-> Timeweb, можно ли подключить постоянный диск к `/data`. Если нельзя — используйте
-> вариант A.
-
----
-
-## Переменные окружения
-
-| Переменная | По умолчанию | Назначение |
-|------------|--------------|------------|
-| `PORT` | `8080` | порт HTTP |
-| `DATA_DIR` | `/data` (в Docker) | где хранятся файлы (`files/`) и временные загрузки (`tmp/`) |
-| `MAX_UPLOAD_MB` | `100` | максимальный размер одного файла |
-| `ADMIN_USER`, `ADMIN_PASSWORD` | — | если заданы оба, `/list` и загрузка закрываются логином/паролем; ссылки на плееблы для клиентов остаются открытыми |
-
-## Проверка после деплоя
-
-```bash
-curl -I https://play.arc-studio.tech/list        # 200
-curl -F "file=@test.html" https://play.arc-studio.tech/upload -i | head -3   # 303 → /list
-```
+- **Домен и HTTPS.** Направить A-запись домена на IP, поставить nginx по готовому конфигу
+  `deploy/nginx.conf` и выпустить сертификат `certbot --nginx`. Сам сервер при этом
+  переводится на внутренний порт: в `/etc/pa-server.env` добавить `PORT=8080` и
+  `HOST=127.0.0.1` (значения из этого файла главнее настроек сервиса),
+  затем `systemctl restart pa-server`.
+- **Docker.** В репозитории есть `Dockerfile` и `docker-compose.yml`
+  (`docker compose up -d --build`, файлы в томе `pa-data`).
+- **App Platform (Apps) не рекомендуется:** диск приложения там, как правило, не
+  сохраняется между деплоями — залитые плееблы могут пропадать.

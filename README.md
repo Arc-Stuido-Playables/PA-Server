@@ -52,8 +52,14 @@ npm test
 
 ## Деплой
 
-Инструкция для Timeweb Cloud — [docs/DEPLOY-TIMEWEB.md](docs/DEPLOY-TIMEWEB.md)
-(VPS + Docker, домен и HTTPS через nginx, бэкапы).
+Самый дешёвый вариант — младший облачный сервер Timeweb, без домена, одна команда:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Arc-Stuido-Playables/PA-Server/main/deploy/install.sh | bash
+```
+
+Сервер откроется по `http://<IP сервера>/list`. Подробно (выбор тарифа, пароль, бэкапы,
+обновление) — [docs/DEPLOY-TIMEWEB.md](docs/DEPLOY-TIMEWEB.md).
 
 ## Настройки
 

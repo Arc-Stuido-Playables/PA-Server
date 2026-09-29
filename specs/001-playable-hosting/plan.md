@@ -80,6 +80,7 @@ tests/
 Dockerfile
 .dockerignore
 docker-compose.yml
+deploy/install.sh      # основной деплой: VPS по IP, systemd
 deploy/nginx.conf
 docs/DEPLOY-TIMEWEB.md
 ```
