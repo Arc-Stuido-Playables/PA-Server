@@ -91,9 +91,7 @@ ${head('Плееблы — Arc Studio')}
     <span class="toolbar-note" id="shown"></span>
   </div>
 
-  <ul class="files" id="files">
-${rows}
-  </ul>
+  <ul class="files" id="files">${rows}</ul>
   <p class="empty" id="empty"${count ? ' hidden' : ''}>${count ? 'Ничего не найдено' : 'Пока пусто — загрузите первый плеебл ниже.'}</p>
 
   <section class="upload card" id="upload">
