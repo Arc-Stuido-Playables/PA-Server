@@ -91,6 +91,18 @@ export class Storage {
     }
   }
 
+  /** Delete a stored file by (already validated) name; false if it did not exist. */
+  async remove(name) {
+    if (!(await this.stat(name))) return false;
+    try {
+      await rm(this.pathOf(name));
+      return true;
+    } catch (err) {
+      if (err.code === 'ENOENT') return false;
+      throw err;
+    }
+  }
+
   /**
    * Write `stream` to a temp file, then atomically move it over `name`.
    * The published file is untouched unless the whole upload succeeds.

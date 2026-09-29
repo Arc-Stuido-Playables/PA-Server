@@ -362,7 +362,7 @@ code {
   .toolbar { top: 3.75rem; }
   .toolbar-note#shown { display: none; }
   .file { flex-wrap: wrap; gap: 0; }
-  .file-link { flex-basis: calc(100% - 2.5rem); }
+  .file-link { flex-basis: calc(100% - 5rem); }
   .file-meta { order: 3; flex-basis: 100%; padding: 0 .5rem .5rem 4.5rem; }
   .file-meta span { min-width: 0; text-align: left; }
   .upload { padding: 1rem; }
@@ -621,3 +621,40 @@ code {
   .ratio-btn { min-width: 5rem; font-size: 1rem; background: hsl(var(--card) / .92); }
   .action-btn { width: 3.75rem; }
 }
+
+/* ---------- Delete ---------- */
+.icon-btn.delete:hover { color: hsl(var(--destructive)); border-color: hsl(var(--destructive) / .3); background: hsl(var(--destructive) / .08); }
+
+.btn-danger { background: hsl(var(--destructive)); border-color: transparent; color: #fff; }
+.btn-danger:hover { box-shadow: 0 0 32px hsl(var(--destructive) / .4); transform: translateY(-1px); }
+
+.dialog {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  height: fit-content;
+  width: min(28rem, calc(100vw - 2rem));
+  padding: 1.5rem;
+  color: hsl(var(--foreground));
+  background: hsl(var(--card));
+}
+.dialog::backdrop { background: hsl(0 0% 0% / .6); backdrop-filter: blur(4px); }
+.dialog h2 { margin: 0 0 .75rem; font-family: var(--font-mono); font-size: 1.25rem; }
+.dialog-name { margin: 0; font-family: var(--font-mono); font-size: .9375rem; color: hsl(var(--primary)); overflow-wrap: anywhere; }
+.dialog-note { margin: .5rem 0 1.25rem; font-size: .875rem; color: hsl(var(--muted-foreground)); }
+.field { display: grid; gap: .375rem; font-size: .875rem; color: hsl(var(--muted-foreground)); }
+.field input {
+  height: 2.75rem;
+  padding: 0 .875rem;
+  border-radius: var(--radius);
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font: inherit;
+  font-size: 1rem;
+  letter-spacing: .2em;
+}
+.field input:focus { outline: 0; border-color: hsl(var(--primary)); box-shadow: 0 0 0 3px hsl(var(--primary) / .2); }
+.dialog-error { margin: .75rem 0 0; font-size: .875rem; color: hsl(var(--destructive)); }
+.dialog-error[hidden] { display: none; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: .75rem; margin-top: 1.5rem; }

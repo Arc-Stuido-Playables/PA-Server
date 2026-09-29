@@ -6,6 +6,7 @@ import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
 
 import { createApp } from '../src/app.js';
+import { createAttemptLimiter } from '../src/auth.js';
 import { decodeFilename, safeName } from '../src/storage.js';
 
 const MB = 1024 * 1024;
@@ -279,5 +280,106 @@ describe('optional basic auth', () => {
     assert.equal((await fetch(`${srv.base}/list`, { headers: auth })).status, 200);
     assert.equal((await upload(srv.base, 'x.html', 'x', { headers: auth })).status, 303);
     assert.equal((await fetch(`${srv.base}${fileLink('x.html')}`)).status, 200);
+  });
+});
+
+describe('delete (002)', () => {
+  let srv;
+  let clock = 0;
+  const limiter = createAttemptLimiter({ max: 5, windowMs: 15 * 60 * 1000, now: () => clock });
+  before(async () => {
+    srv = await startServer({ deletePassword: '9999', deleteLimiter: limiter });
+  });
+  after(async () => { await srv.close(); });
+
+  const del = (name, password) => fetch(`${srv.base}/delete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, password }),
+  });
+
+  test('list shows delete buttons and dialog when enabled', async () => {
+    await upload(srv.base, 'shown.html', 'x');
+    const html = await (await fetch(`${srv.base}/list`)).text();
+    assert.match(html, /class="icon-btn delete"/);
+    assert.match(html, /id="delete-dialog"/);
+  });
+
+  test('US1: correct password deletes the file', async () => {
+    await upload(srv.base, 'гоним_v1.html', 'x');
+    const res = await del('гоним_v1.html', '9999');
+    assert.equal(res.status, 200);
+    assert.equal((await fetch(`${srv.base}${fileLink('гоним_v1.html')}`)).status, 404);
+    assert.ok(!(await (await fetch(`${srv.base}/list`)).text()).includes('гоним_v1.html'));
+  });
+
+  test('US1: wrong password keeps the file', async () => {
+    await upload(srv.base, 'keep.html', 'x');
+    const res = await del('keep.html', '0000');
+    assert.equal(res.status, 403);
+    assert.equal(await res.text(), 'Неверный пароль');
+    assert.equal((await fetch(`${srv.base}${fileLink('keep.html')}`)).status, 200);
+    limiter.reset('127.0.0.1');
+    limiter.reset('::ffff:127.0.0.1');
+  });
+
+  test('US1: missing file, bad names, bad body, wrong method', async () => {
+    assert.equal((await del('nope.html', '9999')).status, 404);
+    assert.equal((await del('../keep.html', '9999')).status, 400);
+    assert.equal((await del(null, '9999')).status, 400);
+    const bad = await fetch(`${srv.base}/delete`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{oops' });
+    assert.equal(bad.status, 400);
+    assert.equal((await fetch(`${srv.base}/delete`)).status, 405);
+    assert.equal((await fetch(`${srv.base}${fileLink('keep.html')}`)).status, 200);
+  });
+
+  test('US1: form-encoded body works too', async () => {
+    await upload(srv.base, 'form.html', 'x');
+    const res = await fetch(`${srv.base}/delete`, {
+      method: 'POST',
+      body: new URLSearchParams({ name: 'form.html', password: '9999' }),
+    });
+    assert.equal(res.status, 200);
+  });
+
+  test('US2: 5 wrong attempts lock out even the right password for 15 min', async () => {
+    await upload(srv.base, 'target.html', 'x');
+    for (let i = 0; i < 5; i++) assert.equal((await del('target.html', `000${i}`)).status, 403);
+    const locked = await del('target.html', '9999');
+    assert.equal(locked.status, 429);
+    assert.equal(locked.headers.get('retry-after'), '900');
+    assert.equal((await fetch(`${srv.base}${fileLink('target.html')}`)).status, 200);
+
+    clock += 15 * 60 * 1000 + 1;
+    assert.equal((await del('target.html', '9999')).status, 200);
+  });
+
+  test('US2: a success resets the failure counter', async () => {
+    await upload(srv.base, 'r1.html', 'x');
+    await upload(srv.base, 'r2.html', 'x');
+    for (let i = 0; i < 4; i++) await del('r1.html', 'bad');
+    assert.equal((await del('r1.html', '9999')).status, 200);
+    for (let i = 0; i < 4; i++) await del('r2.html', 'bad');
+    assert.equal((await del('r2.html', '9999')).status, 200);
+  });
+});
+
+describe('delete disabled without DELETE_PASSWORD', () => {
+  let srv;
+  before(async () => { srv = await startServer(); });
+  after(async () => { await srv.close(); });
+
+  test('no buttons, endpoint refuses', async () => {
+    await upload(srv.base, 'safe.html', 'x');
+    const html = await (await fetch(`${srv.base}/list`)).text();
+    assert.doesNotMatch(html, /icon-btn delete/);
+    assert.doesNotMatch(html, /delete-dialog/);
+    const res = await fetch(`${srv.base}/delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'safe.html', password: '' }),
+    });
+    assert.equal(res.status, 403);
+    assert.equal((await fetch(`${srv.base}${fileLink('safe.html')}`)).status, 200);
   });
 });

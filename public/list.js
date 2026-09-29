@@ -117,6 +117,71 @@
     showPicked();
   });
 
+  // Delete (only rendered when the server has a delete password configured)
+  const dialog = document.getElementById('delete-dialog');
+  if (dialog) {
+    const nameEl = document.getElementById('delete-name');
+    const passwordEl = document.getElementById('delete-password');
+    const errorEl = document.getElementById('delete-error');
+    const confirmBtn = document.getElementById('delete-confirm');
+    const countEl = document.getElementById('count');
+    const session = {
+      get() { try { return sessionStorage.getItem('pa-delete-password') || ''; } catch { return ''; } },
+      set(v) { try { if (v) sessionStorage.setItem('pa-delete-password', v); else sessionStorage.removeItem('pa-delete-password'); } catch { /* ignore */ } },
+    };
+    let targetRow = null;
+
+    list.addEventListener('click', (e) => {
+      const btn = e.target.closest('.delete');
+      if (!btn) return;
+      targetRow = btn.closest('.file');
+      nameEl.textContent = targetRow.querySelector('.file-name').textContent;
+      passwordEl.value = session.get();
+      errorEl.hidden = true;
+      confirmBtn.disabled = false;
+      dialog.showModal();
+      (passwordEl.value ? confirmBtn : passwordEl).focus();
+    });
+    document.getElementById('delete-cancel').addEventListener('click', () => dialog.close());
+
+    document.getElementById('delete-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = nameEl.textContent;
+      confirmBtn.disabled = true;
+      errorEl.hidden = true;
+      let res;
+      try {
+        res = await fetch('/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, password: passwordEl.value }),
+        });
+      } catch {
+        res = null;
+      }
+      confirmBtn.disabled = false;
+      if (res && (res.ok || res.status === 404)) {
+        session.set(passwordEl.value);
+        dialog.close();
+        targetRow.remove();
+        rows.splice(rows.indexOf(targetRow), 1);
+        existing.delete(name);
+        countEl.textContent = `${rows.length} файлов`;
+        filter();
+        if (!rows.length) {
+          empty.textContent = 'Пока пусто — загрузите первый плеебл ниже.';
+          empty.hidden = false;
+        }
+        showToast(`Удалено: ${name}`);
+        return;
+      }
+      if (res?.status === 403) session.set('');
+      errorEl.textContent = res ? await res.text() : 'Сеть недоступна';
+      errorEl.hidden = false;
+      passwordEl.select();
+    });
+  }
+
   // Upload with progress; without JS the form still posts natively.
   form.addEventListener('submit', (e) => {
     if (!input.files.length || !window.FormData) return;

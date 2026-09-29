@@ -11,12 +11,14 @@ const server = await createApp({
   maxUploadBytes: maxUploadMb * 1024 * 1024,
   adminUser: process.env.ADMIN_USER,
   adminPassword: process.env.ADMIN_PASSWORD,
+  deletePassword: process.env.DELETE_PASSWORD,
 });
 
 server.listen(port, host, () => {
   const auth = process.env.ADMIN_USER && process.env.ADMIN_PASSWORD ? 'on' : 'off';
   console.log(`PA-Server on http://${host === '0.0.0.0' ? 'localhost' : host}:${port}/list`);
-  console.log(`data: ${dataDir} | upload limit: ${maxUploadMb} MB | auth: ${auth}`);
+  const del = process.env.DELETE_PASSWORD ? 'on' : 'off';
+  console.log(`data: ${dataDir} | upload limit: ${maxUploadMb} MB | auth: ${auth} | delete: ${del}`);
 });
 
 for (const signal of ['SIGINT', 'SIGTERM']) {

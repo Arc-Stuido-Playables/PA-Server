@@ -66,6 +66,10 @@ ADMIN_PASSWORD=придумайте-пароль
 
 # Лимит размера одного файла, МБ (по умолчанию 100)
 MAX_UPLOAD_MB=100
+
+# Пароль для кнопки «удалить» в списке. Без него удаление выключено.
+# После 5 неверных попыток с одного IP удаление блокируется на 15 минут.
+DELETE_PASSWORD=придумайте-пароль
 ```
 
 ## Полезные команды
@@ -75,7 +79,7 @@ MAX_UPLOAD_MB=100
 | Статус | `systemctl status pa-server` |
 | Логи (кто что залил) | `journalctl -u pa-server -n 100` |
 | Где файлы | `ls /var/lib/pa-server/files` |
-| Удалить плеебл | `rm "/var/lib/pa-server/files/<имя>"` |
+| Удалить плеебл | кнопка 🗑 в списке (нужен `DELETE_PASSWORD`) или `rm "/var/lib/pa-server/files/<имя>"` |
 | Залить пачку файлов со своего ПК | `scp *.html root@<IP>:/var/lib/pa-server/files/` затем `chown -R pa-server: /var/lib/pa-server/files` |
 | Бэкап на свой ПК | `scp -r root@<IP>:/var/lib/pa-server/files ./backup` |
 

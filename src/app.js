@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import busboy from 'busboy';
 
-import { createBasicAuth } from './auth.js';
+import { createAttemptLimiter, createBasicAuth, createSecretCheck } from './auth.js';
 import { LimitError, Storage, decodeFilename, isHtml, safeName } from './storage.js';
 import { listPage, viewerPage } from './views.js';
 
@@ -75,12 +75,26 @@ async function loadAssets() {
   return assets;
 }
 
-export async function createApp({ dataDir, maxUploadBytes, adminUser, adminPassword }) {
+/** Read a small request body; rejects bodies over `limit` bytes. */
+async function readSmallBody(req, limit = 8 * 1024) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > limit) throw new Error('body too large');
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
+export async function createApp({ dataDir, maxUploadBytes, adminUser, adminPassword, deletePassword, deleteLimiter }) {
   const storage = new Storage(dataDir);
   await storage.init();
   const assets = await loadAssets();
   const authorized = createBasicAuth(adminUser, adminPassword);
   const maxUploadMb = Math.round(maxUploadBytes / 1024 / 1024);
+  const deleteAllowed = createSecretCheck(deletePassword);
+  const limiter = deleteLimiter ?? createAttemptLimiter();
 
   function requireAuth(req, res) {
     if (!authorized || authorized(req)) return true;
@@ -93,7 +107,7 @@ export async function createApp({ dataDir, maxUploadBytes, adminUser, adminPassw
   async function handleList(req, res, url) {
     if (!requireAuth(req, res)) return;
     const files = await storage.list();
-    sendHtml(req, res, listPage(files, { uploaded: url.searchParams.get('uploaded'), maxUploadMb }));
+    sendHtml(req, res, listPage(files, { uploaded: url.searchParams.get('uploaded'), maxUploadMb, canDelete: Boolean(deleteAllowed) }));
   }
 
   function handleUpload(req, res) {
@@ -173,6 +187,42 @@ export async function createApp({ dataDir, maxUploadBytes, adminUser, adminPassw
     req.pipe(bb);
   }
 
+  async function handleDelete(req, res) {
+    if (!requireAuth(req, res)) return;
+    if (!deleteAllowed) return sendText(res, 403, 'Удаление отключено');
+
+    const ip = req.socket.remoteAddress;
+    const wait = limiter.retryAfter(ip);
+    if (wait) {
+      const minutes = Math.ceil(wait / 60000);
+      return sendText(res, 429, `Слишком много попыток. Попробуйте через ${minutes} мин.`, {
+        'Retry-After': String(Math.ceil(wait / 1000)),
+      });
+    }
+
+    let body;
+    try {
+      const raw = await readSmallBody(req);
+      body = (req.headers['content-type'] || '').includes('application/json')
+        ? JSON.parse(raw)
+        : Object.fromEntries(new URLSearchParams(raw));
+    } catch {
+      return sendText(res, 400, 'Некорректный запрос');
+    }
+    const { name, password } = body ?? {};
+    if (typeof name !== 'string' || safeName(name) !== name) return sendText(res, 400, 'Недопустимое имя файла');
+
+    if (!deleteAllowed(password)) {
+      limiter.fail(ip);
+      return sendText(res, 403, 'Неверный пароль');
+    }
+    limiter.reset(ip);
+
+    if (!(await storage.remove(name))) return notFound(res);
+    console.log(`deleted: ${name} (by ${ip})`);
+    return sendText(res, 200, 'Удалено');
+  }
+
   async function handleFile(req, res, rawName) {
     let name;
     try {
@@ -207,6 +257,10 @@ export async function createApp({ dataDir, maxUploadBytes, adminUser, adminPassw
     if (pathname === '/upload') {
       if (req.method !== 'POST') return sendText(res, 405, 'Метод не поддерживается', { Allow: 'POST' });
       return handleUpload(req, res);
+    }
+    if (pathname === '/delete') {
+      if (req.method !== 'POST') return sendText(res, 405, 'Метод не поддерживается', { Allow: 'POST' });
+      return handleDelete(req, res);
     }
     if (!readOnly) return sendText(res, 405, 'Метод не поддерживается', { Allow: 'GET, HEAD' });
 
