@@ -1,0 +1,9 @@
+node_modules
+data
+.git
+.claude
+.specify
+specs
+tests
+docs
+*.md
