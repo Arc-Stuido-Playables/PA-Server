@@ -8,6 +8,7 @@ import { after, before, describe, test } from 'node:test';
 import { createApp } from '../src/app.js';
 import { createAttemptLimiter } from '../src/auth.js';
 import { decodeFilename, safeName } from '../src/storage.js';
+import { injectAudioControl } from '../src/views.js';
 
 const MB = 1024 * 1024;
 
@@ -231,12 +232,26 @@ describe('HTTP server', () => {
     assert.match(html, /class="action-btn reload"/);
     assert.match(html, /class="action-btn fullscreen"/);
     assert.match(html, /class="burger-menu"/);
+    assert.match(html, /class="action-btn mute"/);
 
     const srcdoc = /srcdoc="([^"]*)"/.exec(html)[1];
     const decoded = srcdoc
       .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
       .replace(/&#39;/g, "'").replace(/&amp;/g, '&');
-    assert.equal(decoded, playable);
+    // The playable is embedded intact, with the mute shim right after the doctype.
+    assert.equal(decoded, injectAudioControl(playable));
+    assert.ok(decoded.startsWith('<!doctype html><script>(function(){'));
+    assert.ok(decoded.endsWith(playable.slice('<!doctype html>'.length)));
+  });
+
+  test('mute shim is inserted after <head> and keeps the doctype first', () => {
+    const page = '<!DOCTYPE html><html lang="en"><head><title>t</title></head><body></body></html>';
+    const out = injectAudioControl(page);
+    assert.ok(out.startsWith('<!DOCTYPE html><html lang="en"><head><script>'));
+    assert.ok(out.endsWith('<title>t</title></head><body></body></html>'));
+    assert.ok(injectAudioControl('<p>x</p>').startsWith('<script>'));
+    // <header> is not <head>
+    assert.ok(injectAudioControl('<html><header>h</header></html>').startsWith('<html><script>'));
   });
 
   test('US4: only .html/.htm uploads are accepted', async () => {
@@ -405,5 +420,107 @@ describe('delete disabled without DELETE_PASSWORD', () => {
     });
     assert.equal(res.status, 403);
     assert.equal((await fetch(`${srv.base}${fileLink('safe.html')}`)).status, 200);
+  });
+});
+
+describe('upload size (003)', () => {
+  let srv;
+  before(async () => { srv = await startServer({ maxUploadBytes: 0 }); });
+  after(async () => { await srv.close(); });
+
+  test('no limit by default: a big build is accepted and the form says so', async () => {
+    const big = Buffer.alloc(3 * MB, 97);
+    assert.equal((await upload(srv.base, 'big-build.html', big)).status, 303);
+    const html = await (await fetch(`${srv.base}/list`)).text();
+    assert.match(html, /без ограничения размера/);
+    assert.equal((await readFile(path.join(srv.dataDir, 'files', 'big-build.html'))).length, 3 * MB);
+  });
+});
+
+describe('list password (003)', () => {
+  let srv;
+  let clock = 0;
+  const loginLimiter = createAttemptLimiter({ max: 5, windowMs: 15 * 60 * 1000, now: () => clock });
+  before(async () => {
+    srv = await startServer({ accessPassword: '4321', deletePassword: '4321', loginLimiter });
+  });
+  after(async () => { await srv.close(); });
+
+  const login = (password) => fetch(`${srv.base}/login`, {
+    method: 'POST',
+    body: new URLSearchParams({ password }),
+    redirect: 'manual',
+  });
+  async function cookie() {
+    const res = await login('4321');
+    assert.equal(res.status, 303);
+    return res.headers.get('set-cookie').split(';')[0];
+  }
+
+  test('list without a session shows the login form, not the files', async () => {
+    const res = await fetch(`${srv.base}/list`);
+    assert.equal(res.status, 401);
+    const html = await res.text();
+    assert.match(html, /<form class="login-card card" method="post" action="\/login">/);
+    assert.match(html, /type="password" name="password"/);
+    assert.doesNotMatch(html, /upload-form/);
+  });
+
+  test('wrong password is refused, right one sets a 30-day HttpOnly cookie', async () => {
+    const bad = await login('0000');
+    assert.equal(bad.status, 403);
+    assert.match(await bad.text(), /Неверный пароль/);
+    loginLimiter.reset('127.0.0.1');
+    loginLimiter.reset('::ffff:127.0.0.1');
+
+    const ok = await login('4321');
+    assert.equal(ok.status, 303);
+    assert.equal(ok.headers.get('location'), '/list');
+    const setCookie = ok.headers.get('set-cookie');
+    assert.match(setCookie, /pa_session=\d+\.[\w-]+/);
+    assert.match(setCookie, /HttpOnly/);
+    assert.match(setCookie, /Max-Age=2592000/);
+
+    const list = await fetch(`${srv.base}/list`, { headers: { cookie: setCookie.split(';')[0] } });
+    assert.equal(list.status, 200);
+    assert.match(await list.text(), /href="\/logout"/);
+  });
+
+  test('upload and delete need the session; playable links stay public', async () => {
+    assert.equal((await upload(srv.base, 'locked.html', 'x')).status, 401);
+    const c = await cookie();
+    assert.equal((await upload(srv.base, 'locked.html', 'x', { headers: { cookie: c } })).status, 303);
+    assert.equal((await fetch(`${srv.base}${fileLink('locked.html')}`)).status, 200);
+
+    const delNoSession = await fetch(`${srv.base}/delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'locked.html', password: '4321' }),
+    });
+    assert.equal(delNoSession.status, 401);
+    assert.equal((await fetch(`${srv.base}${fileLink('locked.html')}`)).status, 200);
+  });
+
+  test('tampered or expired cookies are rejected', async () => {
+    const c = await cookie();
+    const [, value] = c.split('=');
+    const [exp, mac] = value.split('.');
+    const forged = `pa_session=${Number(exp) + 999}.${mac}`;
+    assert.equal((await fetch(`${srv.base}/list`, { headers: { cookie: forged } })).status, 401);
+    assert.equal((await fetch(`${srv.base}/list`, { headers: { cookie: 'pa_session=1.abc' } })).status, 401);
+    assert.equal((await fetch(`${srv.base}/list`, { headers: { cookie: 'pa_session=garbage' } })).status, 401);
+  });
+
+  test('logout clears the cookie', async () => {
+    const res = await fetch(`${srv.base}/logout`, { redirect: 'manual' });
+    assert.equal(res.status, 303);
+    assert.match(res.headers.get('set-cookie'), /pa_session=; Max-Age=0/);
+  });
+
+  test('5 wrong passwords lock the login for 15 minutes', async () => {
+    for (let i = 0; i < 5; i++) assert.equal((await login(`bad${i}`)).status, 403);
+    assert.equal((await login('4321')).status, 429);
+    clock += 15 * 60 * 1000 + 1;
+    assert.equal((await login('4321')).status, 303);
   });
 });

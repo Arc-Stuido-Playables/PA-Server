@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 
 const digest = (s) => createHash('sha256').update(s).digest();
 
@@ -22,6 +22,44 @@ export function createBasicAuth(user, password) {
     const [scheme, encoded] = header.split(' ');
     if (scheme !== 'Basic' || !encoded) return false;
     return check(Buffer.from(encoded, 'base64').toString('utf8'));
+  };
+}
+
+/**
+ * Stateless login sessions for the team pages: the cookie carries an expiry
+ * signed with a key derived from the access password, so sessions survive
+ * restarts/updates and changing the password logs everyone out.
+ * Returns null when no access password is configured.
+ */
+export function createSessions(password, { cookie = 'pa_session', maxAgeDays = 30, now = Date.now } = {}) {
+  if (!password) return null;
+  const check = createSecretCheck(password);
+  const key = createHash('sha256').update(`pa-session:${password}`).digest();
+  const sign = (exp) => createHmac('sha256', key).update(String(exp)).digest('base64url');
+  const maxAge = maxAgeDays * 24 * 60 * 60;
+
+  return {
+    checkPassword: check,
+    /** Set-Cookie value for a fresh session. */
+    issue() {
+      const exp = Math.floor(now() / 1000) + maxAge;
+      return `${cookie}=${exp}.${sign(exp)}; Max-Age=${maxAge}; Path=/; HttpOnly; SameSite=Lax`;
+    },
+    clear() {
+      return `${cookie}=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax`;
+    },
+    valid(req) {
+      const raw = (req.headers.cookie || '')
+        .split(';')
+        .map((p) => p.trim())
+        .find((p) => p.startsWith(`${cookie}=`));
+      if (!raw) return false;
+      const [exp, mac] = raw.slice(cookie.length + 1).split('.');
+      if (!/^\d+$/.test(exp ?? '') || !mac || Number(exp) * 1000 < now()) return false;
+      const expected = Buffer.from(sign(exp));
+      const given = Buffer.from(mac);
+      return given.length === expected.length && timingSafeEqual(given, expected);
+    },
   };
 }
 

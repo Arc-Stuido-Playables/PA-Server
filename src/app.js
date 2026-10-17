@@ -5,9 +5,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import busboy from 'busboy';
 
-import { createAttemptLimiter, createBasicAuth, createSecretCheck } from './auth.js';
+import { createAttemptLimiter, createBasicAuth, createSecretCheck, createSessions } from './auth.js';
 import { LimitError, Storage, decodeFilename, isHtml, safeName } from './storage.js';
-import { listPage, viewerPage } from './views.js';
+import { listPage, loginPage, viewerPage } from './views.js';
 
 const PUBLIC_DIR = fileURLToPath(new URL('../public/', import.meta.url));
 
@@ -46,9 +46,9 @@ function sendText(res, status, text, headers = {}) {
   res.end(text);
 }
 
-function sendHtml(req, res, html) {
+function sendHtml(req, res, html, status = 200) {
   const body = Buffer.from(html, 'utf8');
-  res.writeHead(200, {
+  res.writeHead(status, {
     'Content-Type': 'text/html; charset=utf-8',
     'Content-Length': body.length,
     // Re-uploads must show up immediately under the same link.
@@ -87,27 +87,74 @@ async function readSmallBody(req, limit = 8 * 1024) {
   return Buffer.concat(chunks).toString('utf8');
 }
 
-export async function createApp({ dataDir, maxUploadBytes, adminUser, adminPassword, deletePassword, deleteLimiter }) {
+export async function createApp({
+  dataDir,
+  maxUploadBytes = 0,
+  adminUser,
+  adminPassword,
+  accessPassword,
+  deletePassword,
+  deleteLimiter,
+  loginLimiter,
+}) {
   const storage = new Storage(dataDir);
   await storage.init();
   const assets = await loadAssets();
   const authorized = createBasicAuth(adminUser, adminPassword);
-  const maxUploadMb = Math.round(maxUploadBytes / 1024 / 1024);
+  const sessions = createSessions(accessPassword);
+  // 0 / unset = no size limit.
+  const uploadLimit = maxUploadBytes > 0 ? maxUploadBytes : Infinity;
+  const maxUploadMb = maxUploadBytes > 0 ? Math.round(maxUploadBytes / 1024 / 1024) : 0;
   const deleteAllowed = createSecretCheck(deletePassword);
   const limiter = deleteLimiter ?? createAttemptLimiter();
+  const loginAttempts = loginLimiter ?? createAttemptLimiter();
 
-  function requireAuth(req, res) {
-    if (!authorized || authorized(req)) return true;
-    sendText(res, 401, 'Требуется авторизация', {
-      'WWW-Authenticate': 'Basic realm="PA-Server", charset="UTF-8"',
-    });
+  /** Team-only routes: optional Basic auth plus the password login session. */
+  function requireAuth(req, res, { page = false } = {}) {
+    if (authorized && !authorized(req)) {
+      sendText(res, 401, 'Требуется авторизация', {
+        'WWW-Authenticate': 'Basic realm="PA-Server", charset="UTF-8"',
+      });
+      return false;
+    }
+    if (!sessions || sessions.valid(req)) return true;
+    if (page) sendHtml(req, res, loginPage({}), 401);
+    else sendText(res, 401, 'Требуется вход: откройте /list и введите пароль');
     return false;
   }
 
   async function handleList(req, res, url) {
-    if (!requireAuth(req, res)) return;
+    if (!requireAuth(req, res, { page: true })) return;
     const files = await storage.list();
-    sendHtml(req, res, listPage(files, { uploaded: url.searchParams.get('uploaded'), maxUploadMb, canDelete: Boolean(deleteAllowed) }));
+    sendHtml(req, res, listPage(files, {
+      uploaded: url.searchParams.get('uploaded'),
+      maxUploadMb,
+      canDelete: Boolean(deleteAllowed),
+      canLogout: Boolean(sessions),
+    }));
+  }
+
+  async function handleLogin(req, res) {
+    if (!sessions) return redirect(res, 303, '/list');
+    const ip = req.socket.remoteAddress;
+    const wait = loginAttempts.retryAfter(ip);
+    if (wait) {
+      const minutes = Math.ceil(wait / 60000);
+      return sendHtml(req, res, loginPage({ error: `Слишком много попыток. Попробуйте через ${minutes} мин.` }), 429);
+    }
+    let password;
+    try {
+      password = new URLSearchParams(await readSmallBody(req)).get('password');
+    } catch {
+      return sendHtml(req, res, loginPage({ error: 'Некорректный запрос' }), 400);
+    }
+    if (!sessions.checkPassword(password ?? '')) {
+      loginAttempts.fail(ip);
+      return sendHtml(req, res, loginPage({ error: 'Неверный пароль' }), 403);
+    }
+    loginAttempts.reset(ip);
+    res.writeHead(303, { Location: '/list', 'Set-Cookie': sessions.issue() });
+    res.end();
   }
 
   function handleUpload(req, res) {
@@ -119,7 +166,7 @@ export async function createApp({ dataDir, maxUploadBytes, adminUser, adminPassw
         headers: req.headers,
         // Keep raw bytes; decodeFilename() picks UTF-8 or cp1251.
         defParamCharset: 'latin1',
-        limits: { files: 1, fileSize: maxUploadBytes, fields: 20, parts: 30 },
+        limits: { files: 1, fileSize: uploadLimit, fields: 20, parts: 30 },
       });
     } catch {
       sendText(res, 400, 'Ожидается multipart/form-data с полем file');
@@ -258,6 +305,14 @@ export async function createApp({ dataDir, maxUploadBytes, adminUser, adminPassw
       if (req.method !== 'POST') return sendText(res, 405, 'Метод не поддерживается', { Allow: 'POST' });
       return handleUpload(req, res);
     }
+    if (pathname === '/login') {
+      if (req.method !== 'POST') return redirect(res, 303, '/list');
+      return handleLogin(req, res);
+    }
+    if (pathname === '/logout') {
+      res.writeHead(303, { Location: '/list', ...(sessions ? { 'Set-Cookie': sessions.clear() } : {}) });
+      return res.end();
+    }
     if (pathname === '/delete') {
       if (req.method !== 'POST') return sendText(res, 405, 'Метод не поддерживается', { Allow: 'POST' });
       return handleDelete(req, res);
@@ -291,7 +346,7 @@ export async function createApp({ dataDir, maxUploadBytes, adminUser, adminPassw
       else res.destroy();
     });
   });
-  // Large builds over slow connections: allow long uploads.
-  server.requestTimeout = 30 * 60 * 1000;
+  // No upload size limit, so no request time limit either (slow links, big builds).
+  server.requestTimeout = 0;
   return server;
 }

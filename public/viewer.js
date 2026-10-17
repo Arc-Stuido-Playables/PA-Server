@@ -24,6 +24,25 @@
   }
   ratioButtons.forEach((btn) => btn.addEventListener('click', () => setRatio(btn.dataset.ratio)));
 
+  // Mute: the server injects window.__paAudio into the playable; the choice is
+  // remembered and re-applied after a restart (the shim reads parent.__paMuted).
+  const muteBtn = document.querySelector('.action-btn.mute');
+  function setMuted(muted) {
+    window.__paMuted = muted;
+    muteBtn.classList.toggle('muted', muted);
+    muteBtn.setAttribute('aria-pressed', String(muted));
+    const label = muted ? 'Включить звук' : 'Выключить звук';
+    muteBtn.title = label;
+    muteBtn.setAttribute('aria-label', label);
+    try { iframe.contentWindow.__paAudio?.set(muted); } catch { /* not ready yet */ }
+  }
+  muteBtn.addEventListener('click', () => {
+    setMuted(!window.__paMuted);
+    store.set('pa-viewer-muted', window.__paMuted ? '1' : '0');
+  });
+  iframe.addEventListener('load', () => setMuted(Boolean(window.__paMuted)));
+  setMuted(Boolean(window.__paMuted));
+
   // Restart the playable without reloading the page
   reloadBtn.addEventListener('click', () => {
     try {

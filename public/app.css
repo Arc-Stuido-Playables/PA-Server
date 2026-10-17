@@ -424,7 +424,7 @@ code {
   overflow: hidden;
 }
 
-.actions { display: flex; }
+.actions { display: flex; flex-direction: column; align-items: center; gap: 1rem; }
 
 .action-btn {
   display: grid;
@@ -444,6 +444,11 @@ code {
 .action-btn:hover { transform: scale(1.06); box-shadow: 0 0 48px hsl(var(--primary) / .55); }
 .action-btn:active { transform: scale(.97); }
 .action-btn.reload.spin svg { animation: spin .5s ease; }
+.action-btn.mute .icon-sound-off { display: none; }
+.action-btn.mute.muted .icon-sound-on { display: none; }
+.action-btn.mute.muted .icon-sound-off { display: block; }
+.action-btn.mute.muted { background: hsl(var(--card)); color: hsl(var(--foreground)); box-shadow: inset 0 0 0 2px hsl(var(--primary)); }
+.page-viewer.light .action-btn.mute.muted { background: #fff; color: hsl(0 0% 8%); }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .page-viewer main {
@@ -658,3 +663,33 @@ code {
 .dialog-error { margin: .75rem 0 0; font-size: .875rem; color: hsl(var(--destructive)); }
 .dialog-error[hidden] { display: none; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: .75rem; margin-top: 1.5rem; }
+
+/* ---------- Login ---------- */
+.login {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem 1rem;
+}
+.login-card {
+  width: min(26rem, 100%);
+  padding: 2rem;
+  display: grid;
+  gap: 1rem;
+  background: hsl(var(--card) / .85);
+}
+.login-card .logo { justify-self: start; }
+.login-icon {
+  width: 3rem;
+  height: 3rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: hsl(var(--primary) / .12);
+  color: hsl(var(--primary));
+}
+.login-icon svg { width: 1.5rem; height: 1.5rem; }
+.login-card h1 { margin: 0; font-family: var(--font-mono); font-size: 1.5rem; }
+.login-card .lead { margin: 0; font-size: .9375rem; }
+.login-card .dialog-error { margin: 0; }
+.login-card .btn { width: 100%; }
