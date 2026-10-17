@@ -34,6 +34,7 @@ const ICONS = {
   moon: `<svg viewBox="0 -960 960 960" aria-hidden="true"><path d="M480-120q-150 0-255-105T120-480q0-150 105-255t255-105q14 0 27.5 1t26.5 3q-41 29-65.5 75.5T444-660q0 90 63 153t153 63q55 0 101-24.5t75-65.5q2 13 3 26.5t1 27.5q0 150-105 255T480-120Z"/></svg>`,
   soundOn: `<svg class="icon-sound-on" viewBox="0 -960 960 960" aria-hidden="true"><path d="M560-131v-82q90-26 145-100t55-168q0-94-55-168T560-749v-82q124 28 202 125.5T840-481q0 127-78 224.5T560-131ZM120-360v-240h160l200-200v640L280-360H120Zm440 40v-322q47 22 73.5 66t26.5 96q0 51-26.5 94.5T560-320Z"/></svg>`,
   soundOff: `<svg class="icon-sound-off" viewBox="0 -960 960 960" aria-hidden="true"><path d="M792-56 671-177q-25 16-53 27.5T560-131v-82q14-5 27.5-10t25.5-12L480-368v208L280-360H120v-240h128L56-792l56-56 736 736-56 56Zm-8-232-58-58q17-31 25.5-65t8.5-70q0-94-55-168T560-749v-82q124 28 202 125.5T840-481q0 53-14.5 102T784-288ZM650-422l-90-90v-130q47 22 73.5 66t26.5 96q0 15-2.5 29.5T650-422ZM480-592 376-696l104-104v208Z"/></svg>`,
+  download: `<svg viewBox="0 -960 960 960" aria-hidden="true"><path d="M480-320 280-520l56-58 104 104v-326h80v326l104-104 56 58-200 200ZM240-160q-33 0-56.5-23.5T160-240v-120h80v120h480v-120h80v120q0 33-23.5 56.5T720-160H240Z"/></svg>`,
   lock: `<svg viewBox="0 -960 960 960" aria-hidden="true"><path d="M240-80q-33 0-56.5-23.5T160-160v-400q0-33 23.5-56.5T240-640h40v-80q0-83 58.5-141.5T480-920q83 0 141.5 58.5T680-720v80h40q33 0 56.5 23.5T800-560v400q0 33-23.5 56.5T720-80H240Zm240-200q33 0 56.5-23.5T560-360q0-33-23.5-56.5T480-440q-33 0-56.5 23.5T400-360q0 33 23.5 56.5T480-280ZM360-640h240v-80q0-50-35-85t-85-35q-50 0-85 35t-35 85v80Z"/></svg>`,
 };
 
@@ -157,6 +158,7 @@ function fileRow(file, fresh, canDelete) {
   return `<li class="file${fresh ? ' fresh' : ''}" data-name="${escapeHtml(file.name.toLowerCase())}">
 <a class="file-link" href="${escapeHtml(url)}"${html ? '' : ' download'}><span class="file-ext${html ? '' : ' file-ext-other'}">${escapeHtml(extLabel(file.name))}</span><span class="file-name">${escapeHtml(file.name)}</span></a>
 <span class="file-meta"><span>${formatSize(file.size)}</span><time datetime="${file.mtime.toISOString()}">${file.mtime.toISOString().slice(0, 10)}</time></span>
+<a class="icon-btn download" href="${escapeHtml(`/download/${encodeURIComponent(file.name)}`)}" download="${escapeHtml(file.name)}" title="Скачать файл" aria-label="Скачать ${escapeHtml(file.name)}">${ICONS.download}</a>
 <button class="icon-btn copy" type="button" data-url="${escapeHtml(url)}" title="Скопировать ссылку" aria-label="Скопировать ссылку на ${escapeHtml(file.name)}">${ICONS.copy}</button>${canDelete ? `
 <button class="icon-btn delete" type="button" title="Удалить" aria-label="Удалить ${escapeHtml(file.name)}">${ICONS.trash}</button>` : ''}
 </li>`;

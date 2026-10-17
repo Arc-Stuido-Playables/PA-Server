@@ -524,3 +524,45 @@ describe('list password (003)', () => {
     assert.equal((await login('4321')).status, 303);
   });
 });
+
+describe('download button (004)', () => {
+  let open;
+  let locked;
+  before(async () => {
+    open = await startServer();
+    locked = await startServer({ accessPassword: '4321' });
+  });
+  after(async () => { await open.close(); await locked.close(); });
+
+  test('list rows link to /download/<name> with the download attribute', async () => {
+    await upload(open.base, '04_G5_31пак_EH1234i001v001.html', '<p>orig</p>');
+    const html = await (await fetch(`${open.base}/list`)).text();
+    assert.ok(html.includes(`href="/download/${encodeURIComponent('04_G5_31пак_EH1234i001v001.html')}" download="04_G5_31пак_EH1234i001v001.html"`));
+  });
+
+  test('download returns the original file as an attachment with a UTF-8 name', async () => {
+    const name = '01_KC_play040_01 на основе Frost & Flame.html';
+    const body = '<!doctype html><p>original "playable" & stuff</p>';
+    await upload(open.base, name, body);
+    const res = await fetch(`${open.base}/download/${encodeURIComponent(name)}`);
+    assert.equal(res.status, 200);
+    assert.equal(await res.text(), body); // raw file, no viewer and no mute shim
+    const cd = res.headers.get('content-disposition');
+    assert.match(cd, /^attachment; filename="01_KC_play040_01 __ ______ Frost & Flame.html"/);
+    assert.ok(cd.includes(`filename*=UTF-8''${encodeURIComponent(name)}`));
+  });
+
+  test('missing files and bad names give 404', async () => {
+    assert.equal((await fetch(`${open.base}/download/nope.html`)).status, 404);
+    assert.equal((await fetch(`${open.base}/download/..%2Fx`)).status, 404);
+    assert.equal((await fetch(`${open.base}/download/`)).status, 404);
+  });
+
+  test('download needs the login when the list is password protected', async () => {
+    const login = await fetch(`${locked.base}/login`, { method: 'POST', body: new URLSearchParams({ password: '4321' }), redirect: 'manual' });
+    const cookie = login.headers.get('set-cookie').split(';')[0];
+    await upload(locked.base, 'secret.html', 'x', { headers: { cookie } });
+    assert.equal((await fetch(`${locked.base}/download/secret.html`)).status, 401);
+    assert.equal((await fetch(`${locked.base}/download/secret.html`, { headers: { cookie } })).status, 200);
+  });
+});

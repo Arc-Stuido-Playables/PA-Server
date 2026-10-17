@@ -58,6 +58,12 @@ function sendHtml(req, res, html, status = 200) {
 }
 
 const notFound = (res) => sendText(res, 404, '404 page not found');
+
+/** attachment header that keeps Cyrillic names (RFC 6266 filename*) with an ASCII fallback. */
+function contentDisposition(name) {
+  const ascii = name.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`;
+}
 const redirect = (res, status, location) => {
   res.writeHead(status, { Location: location });
   res.end();
@@ -270,30 +276,47 @@ export async function createApp({
     return sendText(res, 200, 'Удалено');
   }
 
-  async function handleFile(req, res, rawName) {
+  /** Decode and validate a file name from the URL; null if invalid or missing. */
+  async function lookup(rawName) {
     let name;
     try {
       name = decodeURIComponent(rawName);
     } catch {
-      return notFound(res);
+      return null;
     }
-    if (safeName(name) !== name) return notFound(res);
+    if (safeName(name) !== name) return null;
     const st = await storage.stat(name);
-    if (!st) return notFound(res);
+    return st ? { name, st } : null;
+  }
 
-    if (isHtml(name)) {
-      const content = await readFile(storage.pathOf(name), 'utf8');
-      return sendHtml(req, res, viewerPage(name, content));
-    }
-
+  function sendRaw(req, res, { name, st }, { attachment = false } = {}) {
     res.writeHead(200, {
       'Content-Type': mimeOf(name),
       'Content-Length': st.size,
       'Last-Modified': st.mtime.toUTCString(),
       'Cache-Control': 'no-cache',
+      ...(attachment ? { 'Content-Disposition': contentDisposition(name) } : {}),
     });
     if (req.method === 'HEAD') return res.end();
     createReadStream(storage.pathOf(name)).on('error', () => res.destroy()).pipe(res);
+  }
+
+  async function handleFile(req, res, rawName) {
+    const file = await lookup(rawName);
+    if (!file) return notFound(res);
+    if (isHtml(file.name)) {
+      const content = await readFile(storage.pathOf(file.name), 'utf8');
+      return sendHtml(req, res, viewerPage(file.name, content));
+    }
+    return sendRaw(req, res, file);
+  }
+
+  /** The original file as an attachment, for the list's download button. */
+  async function handleDownload(req, res, rawName) {
+    if (!requireAuth(req, res)) return;
+    const file = await lookup(rawName);
+    if (!file) return notFound(res);
+    return sendRaw(req, res, file, { attachment: true });
   }
 
   async function route(req, res) {
@@ -325,6 +348,9 @@ export async function createApp({
     if (pathname === '/healthz') return sendText(res, 200, 'ok');
     if (pathname.startsWith('/files/') && pathname.length > '/files/'.length) {
       return handleFile(req, res, pathname.slice('/files/'.length));
+    }
+    if (pathname.startsWith('/download/') && pathname.length > '/download/'.length) {
+      return handleDownload(req, res, pathname.slice('/download/'.length));
     }
 
     const asset = assets.get(pathname);

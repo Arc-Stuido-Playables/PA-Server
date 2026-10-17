@@ -362,7 +362,7 @@ code {
   .toolbar { top: 3.75rem; }
   .toolbar-note#shown { display: none; }
   .file { flex-wrap: wrap; gap: 0; }
-  .file-link { flex-basis: calc(100% - 5rem); }
+  .file-link { flex-basis: calc(100% - 7.5rem); }
   .file-meta { order: 3; flex-basis: 100%; padding: 0 .5rem .5rem 4.5rem; }
   .file-meta span { min-width: 0; text-align: left; }
   .upload { padding: 1rem; }
