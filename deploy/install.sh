@@ -24,15 +24,19 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 export DEBIAN_FRONTEND=noninteractive
+# Ubuntu's own unattended upgrades may hold the apt lock: wait for it instead of failing.
+APT="apt-get -o DPkg::Lock::Timeout=600"
 
-log "Системные пакеты"
-apt-get update -qq
-apt-get install -y -qq git curl ca-certificates >/dev/null
+if ! command -v git >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
+  log "Системные пакеты"
+  $APT update -qq
+  $APT install -y -qq git curl ca-certificates >/dev/null
+fi
 
 if ! command -v node >/dev/null 2>&1 || [ "$(node -p 'process.versions.node.split(".")[0]')" -lt 20 ]; then
   log "Установка Node.js 22"
   curl -fsSL https://deb.nodesource.com/setup_22.x | bash - >/dev/null
-  apt-get install -y -qq nodejs >/dev/null
+  $APT install -y -qq nodejs >/dev/null
 fi
 log "Node $(node -v)"
 
