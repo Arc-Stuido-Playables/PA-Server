@@ -7,6 +7,7 @@ import busboy from 'busboy';
 
 import { createAttemptLimiter, createBasicAuth, createSecretCheck, createSessions } from './auth.js';
 import { LimitError, Storage, decodeFilename, isHtml, safeName } from './storage.js';
+import { applyValues, readParams } from '../public/pa-config.js';
 import { listPage, loginPage, viewerPage } from './views.js';
 
 const PUBLIC_DIR = fileURLToPath(new URL('../public/', import.meta.url));
@@ -306,9 +307,37 @@ export async function createApp({
     if (!file) return notFound(res);
     if (isHtml(file.name)) {
       const content = await readFile(storage.pathOf(file.name), 'utf8');
-      return sendHtml(req, res, viewerPage(file.name, content));
+      // The parameter panel is for the team only; clients just see the playable.
+      const canEdit = (!authorized || authorized(req)) && (!sessions || sessions.valid(req));
+      const params = canEdit ? readParams(content) : [];
+      return sendHtml(req, res, viewerPage(file.name, content, { params }));
     }
     return sendRaw(req, res, file);
+  }
+
+  /** Save new values of the playable's own numeric parameters into its config block. */
+  async function handleConfig(req, res, rawName) {
+    if (!requireAuth(req, res)) return;
+    const file = await lookup(rawName);
+    if (!file || !isHtml(file.name)) return notFound(res);
+    let values;
+    try {
+      values = JSON.parse(await readSmallBody(req, 64 * 1024)).values;
+    } catch {
+      return sendText(res, 400, 'Некорректный запрос');
+    }
+    const html = await readFile(storage.pathOf(file.name), 'utf8');
+    let updated;
+    try {
+      updated = applyValues(html, values);
+    } catch (err) {
+      return sendText(res, 400, err.message);
+    }
+    await storage.writeText(file.name, updated);
+    console.log(`config saved: ${file.name} ${JSON.stringify(values)} (by ${req.socket.remoteAddress})`);
+    const body = JSON.stringify({ params: readParams(updated) });
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+    res.end(body);
   }
 
   /** The original file as an attachment, for the list's download button. */
@@ -335,6 +364,10 @@ export async function createApp({
     if (pathname === '/logout') {
       res.writeHead(303, { Location: '/list', ...(sessions ? { 'Set-Cookie': sessions.clear() } : {}) });
       return res.end();
+    }
+    if (pathname.startsWith('/config/') && pathname.length > '/config/'.length) {
+      if (req.method !== 'POST') return sendText(res, 405, 'Метод не поддерживается', { Allow: 'POST' });
+      return handleConfig(req, res, pathname.slice('/config/'.length));
     }
     if (pathname === '/delete') {
       if (req.method !== 'POST') return sendText(res, 405, 'Метод не поддерживается', { Allow: 'POST' });

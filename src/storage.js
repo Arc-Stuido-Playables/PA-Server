@@ -1,5 +1,5 @@
 import { createWriteStream } from 'node:fs';
-import { mkdir, readdir, rename, rm, stat } from 'node:fs/promises';
+import { mkdir, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
@@ -101,6 +101,18 @@ export class Storage {
       return true;
     } catch (err) {
       if (err.code === 'ENOENT') return false;
+      throw err;
+    }
+  }
+
+  /** Atomically replace a stored file's content (same temp-file + rename as uploads). */
+  async writeText(name, text) {
+    const tmp = path.join(this.tmpDir, `${Date.now()}-${randomBytes(6).toString('hex')}`);
+    try {
+      await writeFile(tmp, text, { flag: 'wx' });
+      await rename(tmp, this.pathOf(name));
+    } catch (err) {
+      await rm(tmp, { force: true });
       throw err;
     }
   }

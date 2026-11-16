@@ -35,6 +35,7 @@ const ICONS = {
   soundOn: `<svg class="icon-sound-on" viewBox="0 -960 960 960" aria-hidden="true"><path d="M560-131v-82q90-26 145-100t55-168q0-94-55-168T560-749v-82q124 28 202 125.5T840-481q0 127-78 224.5T560-131ZM120-360v-240h160l200-200v640L280-360H120Zm440 40v-322q47 22 73.5 66t26.5 96q0 51-26.5 94.5T560-320Z"/></svg>`,
   soundOff: `<svg class="icon-sound-off" viewBox="0 -960 960 960" aria-hidden="true"><path d="M792-56 671-177q-25 16-53 27.5T560-131v-82q14-5 27.5-10t25.5-12L480-368v208L280-360H120v-240h128L56-792l56-56 736 736-56 56Zm-8-232-58-58q17-31 25.5-65t8.5-70q0-94-55-168T560-749v-82q124 28 202 125.5T840-481q0 53-14.5 102T784-288ZM650-422l-90-90v-130q47 22 73.5 66t26.5 96q0 15-2.5 29.5T650-422ZM480-592 376-696l104-104v208Z"/></svg>`,
   download: `<svg viewBox="0 -960 960 960" aria-hidden="true"><path d="M480-320 280-520l56-58 104 104v-326h80v326l104-104 56 58-200 200ZM240-160q-33 0-56.5-23.5T160-240v-120h80v120h480v-120h80v120q0 33-23.5 56.5T720-160H240Z"/></svg>`,
+  tune: `<svg viewBox="0 -960 960 960" aria-hidden="true"><path d="M440-120v-240h80v80h320v80H520v80h-80Zm-320-80v-80h240v80H120Zm160-160v-80H120v-80h160v-80h80v240h-80Zm160-80v-80h400v80H440Zm160-160v-240h80v80h160v80H680v80h-80Zm-480-80v-80h400v80H120Z"/></svg>`,
   lock: `<svg viewBox="0 -960 960 960" aria-hidden="true"><path d="M240-80q-33 0-56.5-23.5T160-160v-400q0-33 23.5-56.5T240-640h40v-80q0-83 58.5-141.5T480-920q83 0 141.5 58.5T680-720v80h40q33 0 56.5 23.5T800-560v400q0 33-23.5 56.5T720-80H240Zm240-200q33 0 56.5-23.5T560-360q0-33-23.5-56.5T480-440q-33 0-56.5 23.5T400-360q0 33 23.5 56.5T480-280ZM360-640h240v-80q0-50-35-85t-85-35q-50 0-85 35t-35 85v80Z"/></svg>`,
 };
 
@@ -234,7 +235,8 @@ ${head('Плееблы — Arc Studio')}
 </html>`;
 }
 
-export function viewerPage(name, content) {
+export function viewerPage(name, content, { params = [] } = {}) {
+  const hasParams = params.length > 0;
   const ratios = [
     ['916', '9:16'],
     ['169', '16:9'],
@@ -250,7 +252,9 @@ export function viewerPage(name, content) {
 <head>
 ${head(name)}
 <script>try { window.__paMuted = localStorage.getItem('pa-viewer-muted') === '1'; } catch (e) {}</script>
-<script src="/assets/viewer.js?v=${V}" defer></script>
+<script src="/assets/viewer.js?v=${V}" defer></script>${hasParams ? `
+<script type="application/json" id="pa-params">${JSON.stringify(params).replace(/</g, '\\u003c')}</script>
+<script type="module" src="/assets/params.js?v=${V}"></script>` : ''}
 </head>
 <body class="page-viewer">
 <div class="glow" aria-hidden="true"></div>
@@ -260,11 +264,21 @@ ${head(name)}
       ${LOGO}
       <p class="file-title" title="${escapeHtml(name)}">${escapeHtml(name)}</p>
     </div>
-    <section class="actions">
+    <section class="actions">${hasParams ? `
+      <button class="action-btn params" type="button" title="Параметры плеебла" aria-label="Параметры плеебла" aria-expanded="false">${ICONS.tune}</button>` : ''}
       <button class="action-btn mute" type="button" title="Выключить звук" aria-label="Выключить звук" aria-pressed="false">${ICONS.soundOn}${ICONS.soundOff}</button>
       <button class="action-btn reload" type="button" title="Перезапустить плеебл" aria-label="Перезапустить плеебл">${ICONS.reload}</button>
     </section>
-  </aside>
+  </aside>${hasParams ? `
+  <aside class="params-panel card" id="params-panel" hidden>
+    <header><h2>Параметры</h2><button class="icon-btn" type="button" id="params-close" aria-label="Закрыть">×</button></header>
+    <form id="params-form"></form>
+    <p class="params-status" id="params-status" role="status"></p>
+    <footer>
+      <button class="btn btn-sm" type="button" id="params-reset">Сбросить</button>
+      <button class="btn btn-primary btn-sm" type="button" id="params-save">Сохранить</button>
+    </footer>
+  </aside>` : ''}
 
   <main>
     <section class="iframe-wrapper">
